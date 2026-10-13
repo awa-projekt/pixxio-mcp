@@ -1,0 +1,29 @@
+# Tests every commit; on the default branch also builds the image and pushes it to this project's
+# registry, tagged with the commit and as latest. Kaniko, because the runners have no Docker daemon.
+test:
+  image: ghcr.io/astral-sh/uv:0.12-python3.14-trixie-slim
+  interruptible: true
+  script:
+    - uv sync --frozen
+    - uv run pytest -q
+
+build:
+  needs: [test]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  image:
+    name: registry.gitlab.com/gitlab-ci-utils/container-images/kaniko:v1.25.15-debug@sha256:14141dd65f8d1e1ac400c437e81d0ec3f1c0f78c2587101d7faab33aed48d79f
+    entrypoint: [""]
+  interruptible: true
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - AUTH=$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')
+    - printf '{"auths":{"%s":{"auth":"%s"}}}\n' "$CI_REGISTRY" "$AUTH" > /kaniko/.docker/config.json
+  script:
+    - >-
+      /kaniko/executor
+      --context "$CI_PROJECT_DIR"
+      --dockerfile "$CI_PROJECT_DIR/Dockerfile"
+      --destination "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+      --destination "$CI_REGISTRY_IMAGE:latest"
+      --cache=true --cache-repo "$CI_REGISTRY_IMAGE/cache"
